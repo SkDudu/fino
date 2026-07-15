@@ -1,0 +1,9 @@
+[
+  "expense",
+  "income",
+  "pix_sent",
+  "pix_received",
+  "transfer",
+  "payment",
+  "withdraw"
+]

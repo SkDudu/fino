@@ -1,0 +1,8 @@
+{{conversationBlock}}
+
+Dados SQLite:
+{{sqliteContext}}
+
+Pergunta: {{question}}
+
+Responda em português, curto e objetivo.

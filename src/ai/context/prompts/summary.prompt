@@ -1,0 +1,3 @@
+Com base nos dados abaixo, gere um resumo financeiro.
+
+{{sqliteContext}}

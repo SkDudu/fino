@@ -1,0 +1,6 @@
+Classifique a transação.
+
+Merchant: {{merchant}}
+Descrição: {{description}}
+
+Retorne JSON: category, subcategory, confidence (0 a 1).

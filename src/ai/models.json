@@ -1,0 +1,28 @@
+[
+  {
+    "id": "qwen3-0.6b",
+    "label": "Qwen3 0.6B",
+    "file": "Qwen3-0.6B-Q8_0.gguf",
+    "downloadUrl": "https://pub-e98ba9e10ae046ac84ee9a184ee9ff80.r2.dev/Qwen3-0.6B-Q8_0.gguf",
+    "size": 639446688,
+    "sha256": "",
+    "hint": "~610 MB · recomendado",
+    "nCtx": 2048,
+    "nPredict": 256,
+    "nGpuLayers": 99,
+    "nThreads": 4
+  },
+  {
+    "id": "qwen2.5-3b",
+    "label": "Qwen 2.5 3B",
+    "file": "qwen2.5-3b-instruct-q4_k_m.gguf",
+    "downloadUrl": "https://pub-e98ba9e10ae046ac84ee9a184ee9ff80.r2.dev/qwen2.5-3b-instruct-q4_k_m.gguf",
+    "size": 2104932768,
+    "sha256": "",
+    "hint": "~2 GB · R2",
+    "nCtx": 1024,
+    "nPredict": 128,
+    "nGpuLayers": 99,
+    "nThreads": 4
+  }
+]

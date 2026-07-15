@@ -1,0 +1,6 @@
+Extraia dados da notificação abaixo.
+
+Saída: objeto JSON com merchant, brand, category, subcategory, confidence (0 a 1).
+
+Notificação:
+{{notification}}

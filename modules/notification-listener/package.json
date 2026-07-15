@@ -1,0 +1,14 @@
+{
+  "name": "notification-listener",
+  "version": "0.1.0",
+  "description": "Android NotificationListenerService bridge for Expo",
+  "main": "src/index.ts",
+  "types": "src/index.ts",
+  "keywords": ["react-native", "expo", "notification-listener"],
+  "license": "MIT",
+  "peerDependencies": {
+    "expo": "*",
+    "react": "*",
+    "react-native": "*"
+  }
+}
