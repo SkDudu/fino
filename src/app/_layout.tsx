@@ -98,6 +98,7 @@ export default function RootLayout() {
         <Stack.Screen name="choose-apps" />
         <Stack.Screen name="watched-banks" />
         <Stack.Screen name="ai-local" />
+        <Stack.Screen name="conversations" />
         <Stack.Screen name="transaction/[id]" />
       </Stack>
     </>

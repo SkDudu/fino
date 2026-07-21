@@ -85,6 +85,13 @@ CREATE TABLE IF NOT EXISTS watched_banks (
   label TEXT NOT NULL,
   created_at TEXT NOT NULL
 );
+
+CREATE TABLE IF NOT EXISTS chat_threads (
+  id TEXT PRIMARY KEY,
+  title TEXT NOT NULL,
+  updated_at INTEGER NOT NULL,
+  messages TEXT NOT NULL
+);
 `;
 
 const TX_COLUMNS: [string, string][] = [

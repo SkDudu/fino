@@ -1,4 +1,4 @@
-import { useFocusEffect, useRouter } from "expo-router";
+import { useFocusEffect, useLocalSearchParams, useRouter } from "expo-router";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   Alert,
@@ -20,15 +20,19 @@ import {
   isReady,
   subscribeStatus,
 } from "@/ai/AIService";
-import { initDb } from "@/database/db";
+import { clearConversation } from "@/ai/conversation/ConversationStore";
 import type { AiStatus } from "@/ai/constants";
 import { DEFAULT_MODEL_ID } from "@/ai/constants";
 import { getCatalogModel } from "@/ai/modelCatalog";
 import { PrimaryButton } from "@/components/PrimaryButton";
 import { ScreenHeader } from "@/components/ScreenHeader";
 import { colors, radius, spacing, typography } from "@/constants/theme";
-
-type Msg = { id: string; role: "ai" | "user"; text: string };
+import {
+  getChatThread,
+  saveChatThread,
+  type ChatMsg,
+} from "@/database/chatRepo";
+import { initDb } from "@/database/db";
 
 const WELCOME_READY =
   "Modelo carregado. Pergunte sobre seus gastos ou escolha uma sugestão abaixo.";
@@ -38,6 +42,12 @@ const SUGGESTIONS = [
   "Onde posso cortar gastos?",
   "Meta de alimentação",
 ];
+
+const WELCOME_MSG: ChatMsg = {
+  id: "welcome",
+  role: "ai",
+  text: WELCOME_READY,
+};
 
 const defaultSize = getCatalogModel(DEFAULT_MODEL_ID).size;
 const SIZE_HINT =
@@ -58,17 +68,44 @@ function chipColor(status: AiStatus): string {
   return colors.success;
 }
 
+function HeaderBtn({
+  onPress,
+  primary,
+  icon,
+}: {
+  onPress: () => void;
+  primary?: boolean;
+  icon: keyof typeof Ionicons.glyphMap;
+}) {
+  return (
+    <Pressable
+      onPress={onPress}
+      hitSlop={8}
+      style={[styles.iconBtn, primary && styles.iconBtnPrimary]}
+      accessibilityRole="button"
+    >
+      <Ionicons
+        name={icon}
+        size={20}
+        color={primary ? colors.buttonPrimaryText : colors.textSecondary}
+      />
+    </Pressable>
+  );
+}
+
 export default function AiScreen() {
   const router = useRouter();
+  const params = useLocalSearchParams<{ id?: string; new?: string }>();
   const [installed, setInstalled] = useState<boolean | null>(null);
   const [runtimeStatus, setRuntimeStatus] = useState<AiStatus>(getStatus());
-  const [msgs, setMsgs] = useState<Msg[]>([
-    { id: "welcome", role: "ai", text: WELCOME_READY },
-  ]);
+  const [threadId, setThreadId] = useState<string | null>(null);
+  const [threadTitle, setThreadTitle] = useState<string | null>(null);
+  const [msgs, setMsgs] = useState<ChatMsg[]>([WELCOME_MSG]);
   const [input, setInput] = useState("");
   const [showSuggestions, setShowSuggestions] = useState(true);
   const [thinking, setThinking] = useState(false);
   const scrollRef = useRef<ScrollView>(null);
+  const persistBusy = useRef(false);
 
   const scrollToEnd = useCallback(() => {
     scrollRef.current?.scrollToEnd({ animated: true });
@@ -78,6 +115,15 @@ export default function AiScreen() {
     scrollToEnd();
   }, [msgs, showSuggestions, scrollToEnd]);
 
+  const resetNew = useCallback(() => {
+    clearConversation();
+    setThreadId(null);
+    setThreadTitle(null);
+    setMsgs([WELCOME_MSG]);
+    setShowSuggestions(true);
+    setInput("");
+  }, []);
+
   useFocusEffect(
     useCallback(() => {
       void isModelInstalled().then(setInstalled);
@@ -85,8 +131,32 @@ export default function AiScreen() {
         if (ready) setRuntimeStatus("READY");
         else setRuntimeStatus(getStatus());
       });
-      return subscribeStatus(setRuntimeStatus);
-    }, [])
+      const unsub = subscribeStatus(setRuntimeStatus);
+
+      const id = typeof params.id === "string" ? params.id : undefined;
+      const isNew = params.new === "1";
+
+      if (isNew) {
+        resetNew();
+        router.setParams({ new: undefined, id: undefined } as never);
+      } else if (id) {
+        void initDb()
+          .then(() => getChatThread(id))
+          .then((t) => {
+            if (!t) {
+              resetNew();
+              return;
+            }
+            clearConversation();
+            setThreadId(t.id);
+            setThreadTitle(t.title);
+            setMsgs(t.messages.length ? t.messages : [WELCOME_MSG]);
+            setShowSuggestions(false);
+          });
+      }
+
+      return unsub;
+    }, [params.id, params.new, resetNew, router])
   );
 
   const canSend = useMemo(
@@ -94,6 +164,19 @@ export default function AiScreen() {
     [input, thinking, runtimeStatus]
   );
   const chipTint = chipColor(runtimeStatus);
+  const inThread = threadId != null && threadTitle != null;
+
+  async function persist(next: ChatMsg[], id: string) {
+    if (persistBusy.current) return;
+    persistBusy.current = true;
+    try {
+      await initDb();
+      const saved = await saveChatThread(id, next);
+      setThreadTitle(saved.title);
+    } finally {
+      persistBusy.current = false;
+    }
+  }
 
   async function sendQuestion(text: string) {
     const q = text.trim();
@@ -104,46 +187,79 @@ export default function AiScreen() {
     }
     setShowSuggestions(false);
     setInput("");
+    const id = threadId ?? `c-${Date.now()}`;
+    if (!threadId) setThreadId(id);
+
+    const userMsg: ChatMsg = { id: `u-${Date.now()}`, role: "user", text: q };
     const replyId = `a-${Date.now()}`;
-    setMsgs((prev) => [
-      ...prev,
-      { id: `u-${Date.now()}`, role: "user", text: q },
-      { id: replyId, role: "ai", text: "" },
-    ]);
+    const replyMsg: ChatMsg = { id: replyId, role: "ai", text: "" };
+
+    setMsgs((prev) => {
+      const base = prev[0]?.id === "welcome" ? prev.slice(1) : prev;
+      return [...base, userMsg, replyMsg];
+    });
     setThinking(true);
+
+    let finalMsgs: ChatMsg[] = [];
     try {
       await initDb();
       let streamed = "";
       const reply = await askAi(q, (token) => {
         streamed += token;
         const text = streamed;
-        setMsgs((prev) =>
-          prev.map((m) => (m.id === replyId ? { ...m, text } : m))
-        );
+        setMsgs((prev) => {
+          const next = prev.map((m) =>
+            m.id === replyId ? { ...m, text } : m
+          );
+          finalMsgs = next;
+          return next;
+        });
       });
       const finalText = reply.trim() || streamed.trim() || "Sem resposta.";
-      setMsgs((prev) =>
-        prev.map((m) =>
+      setMsgs((prev) => {
+        const next = prev.map((m) =>
           m.id === replyId ? { ...m, text: finalText } : m
-        )
-      );
+        );
+        finalMsgs = next;
+        return next;
+      });
     } catch {
-      setMsgs((prev) =>
-        prev.map((m) =>
+      setMsgs((prev) => {
+        const next = prev.map((m) =>
           m.id === replyId
             ? { ...m, text: "Não consegui responder agora. Tente de novo." }
             : m
-        )
-      );
+        );
+        finalMsgs = next;
+        return next;
+      });
     } finally {
       setThinking(false);
+      if (finalMsgs.length) void persist(finalMsgs, id);
     }
   }
+
+  const headerActions = (
+    <View style={styles.actions}>
+      <HeaderBtn
+        icon="time-outline"
+        onPress={() => router.push("/conversations" as never)}
+      />
+      <HeaderBtn
+        icon="add"
+        primary
+        onPress={() => {
+          resetNew();
+          router.setParams({ id: undefined, new: undefined } as never);
+        }}
+      />
+    </View>
+  );
 
   if (installed !== true) {
     return (
       <SafeAreaView style={styles.container} edges={["top"]}>
-        <ScreenHeader eyebrow="ASSISTENTE" title="IA" />
+        <ScreenHeader eyebrow="ASSISTENTE" title="IA" trailing={headerActions} />
         <View style={styles.emptyWrap}>
           <View style={styles.emptyIcon}>
             <Ionicons name="hardware-chip-outline" size={40} color={colors.primary} />
@@ -178,7 +294,19 @@ export default function AiScreen() {
 
   return (
     <SafeAreaView style={styles.container} edges={["top"]}>
-      <ScreenHeader eyebrow="ASSISTENTE" title="IA" />
+      <ScreenHeader
+        eyebrow={inThread ? "CONVERSA" : "ASSISTENTE"}
+        title={inThread ? threadTitle! : "IA"}
+        leading={
+          inThread ? (
+            <HeaderBtn
+              icon="chevron-back"
+              onPress={() => router.push("/conversations" as never)}
+            />
+          ) : undefined
+        }
+        trailing={headerActions}
+      />
       <View style={[styles.readyChip, { backgroundColor: `${chipTint}1F` }]}>
         <View style={[styles.readyDot, { backgroundColor: chipTint }]} />
         <Text style={[styles.readyText, { color: chipTint }]}>
@@ -256,6 +384,17 @@ export default function AiScreen() {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.background },
+  actions: { flexDirection: "row", alignItems: "center", gap: spacing.sm },
+  iconBtn: {
+    width: 44,
+    height: 44,
+    borderRadius: radius.md,
+    backgroundColor: colors.surface,
+    alignItems: "center",
+    justifyContent: "center",
+    flexShrink: 0,
+  },
+  iconBtnPrimary: { backgroundColor: colors.primary },
   emptyWrap: {
     flex: 1,
     alignItems: "center",
@@ -365,7 +504,10 @@ const styles = StyleSheet.create({
   userBubble: {
     maxWidth: "80%",
     padding: spacing.base,
-    borderRadius: radius.lg,
+    borderTopLeftRadius: radius.lg,
+    borderTopRightRadius: radius.lg,
+    borderBottomLeftRadius: radius.lg,
+    borderBottomRightRadius: 4,
     backgroundColor: colors.userBubble,
   },
   userText: { ...typography.body, color: colors.text },

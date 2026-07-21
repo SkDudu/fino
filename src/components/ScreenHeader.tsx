@@ -5,15 +5,19 @@ import { colors, spacing, typography } from "@/constants/theme";
 type Props = {
   eyebrow: string;
   title: string;
+  leading?: ReactNode;
   trailing?: ReactNode;
 };
 
-export function ScreenHeader({ eyebrow, title, trailing }: Props) {
+export function ScreenHeader({ eyebrow, title, leading, trailing }: Props) {
   return (
     <View style={styles.row}>
+      {leading}
       <View style={styles.left}>
         <Text style={styles.eyebrow}>{eyebrow}</Text>
-        <Text style={styles.title}>{title}</Text>
+        <Text style={styles.title} numberOfLines={1}>
+          {title}
+        </Text>
       </View>
       {trailing}
     </View>
@@ -24,11 +28,11 @@ const styles = StyleSheet.create({
   row: {
     flexDirection: "row",
     alignItems: "center",
-    justifyContent: "space-between",
+    gap: spacing.sm,
     paddingHorizontal: spacing.lg,
     paddingVertical: spacing.base,
   },
-  left: { gap: 2 },
+  left: { gap: 2, flex: 1 },
   eyebrow: {
     ...typography.caption,
     color: colors.textTertiary,
