@@ -75,16 +75,7 @@ export default function RootLayout() {
       >
         <Stack.Screen name="(tabs)" />
         <Stack.Screen name="onboarding" />
-        <Stack.Screen
-          name="notifications"
-          options={{
-            headerShown: true,
-            title: "Notificações",
-            headerStyle: { backgroundColor: colors.background },
-            headerTintColor: colors.text,
-            headerShadowVisible: false,
-          }}
-        />
+        <Stack.Screen name="notifications" />
         <Stack.Screen
           name="discarded"
           options={{

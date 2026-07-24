@@ -37,7 +37,7 @@ export function buildEnrichmentMessages(rawText: string): EnrichmentMessages {
     ctx.categorization,
     "",
     "[EXPECTED OUTPUT]",
-    "JSON com merchant, brand, category, subcategory, confidence (0 a 1).",
+    "APENAS JSON válido (sem <think>, sem markdown) com merchant, brand, category, subcategory, confidence (0 a 1).",
   ].join("\n");
 
   const user = fillTemplate(ctx.prompts.extract, { notification: rawText });

@@ -2,48 +2,39 @@ import { Pressable, ScrollView, StyleSheet, Text } from "react-native";
 import { colors, radius, spacing, typography } from "@/constants/theme";
 
 type Props = {
-  options: string[];
-  selected: string | undefined;
-  onSelect: (value: string | undefined) => void;
+  options: readonly string[];
+  selected: string;
+  onSelect: (value: string) => void;
 };
 
 export function FilterChips({ options, selected, onSelect }: Props) {
   return (
-    <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.row}>
-      <Chip label="Todos" active={!selected} onPress={() => onSelect(undefined)} />
+    <ScrollView
+      horizontal
+      showsHorizontalScrollIndicator={false}
+      style={styles.row}
+      contentContainerStyle={styles.content}
+    >
       {options.map((opt) => (
-        <Chip
+        <Pressable
           key={opt}
-          label={opt}
-          active={selected === opt}
+          style={[styles.chip, selected === opt && styles.chipActive]}
           onPress={() => onSelect(opt)}
-        />
+        >
+          <Text
+            style={[styles.chipText, selected === opt && styles.chipTextActive]}
+          >
+            {opt}
+          </Text>
+        </Pressable>
       ))}
     </ScrollView>
   );
 }
 
-function Chip({
-  label,
-  active,
-  onPress,
-}: {
-  label: string;
-  active: boolean;
-  onPress: () => void;
-}) {
-  return (
-    <Pressable
-      style={[styles.chip, active && styles.chipActive]}
-      onPress={onPress}
-    >
-      <Text style={[styles.chipText, active && styles.chipTextActive]}>{label}</Text>
-    </Pressable>
-  );
-}
-
 const styles = StyleSheet.create({
   row: { flexGrow: 0, marginBottom: spacing.sm },
+  content: { paddingHorizontal: spacing.lg },
   chip: {
     paddingHorizontal: 14,
     paddingVertical: spacing.sm,
@@ -53,5 +44,8 @@ const styles = StyleSheet.create({
   },
   chipActive: { backgroundColor: colors.primary },
   chipText: { ...typography.small, color: colors.text },
-  chipTextActive: { color: colors.buttonPrimaryText, fontFamily: typography.title.fontFamily },
+  chipTextActive: {
+    color: colors.buttonPrimaryText,
+    fontFamily: typography.title.fontFamily,
+  },
 });

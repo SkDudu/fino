@@ -19,7 +19,7 @@ import { listWatchedBanks, replaceWatchedBanks } from "@/database/watchedBanksRe
 import { useNotifications } from "@/hooks/useNotifications";
 import { useWatchedBanks } from "@/hooks/useWatchedBanks";
 import { processNotification } from "@/services/notificationPipeline";
-import { bumpData, setPending } from "@/store/dataVersion";
+import { bumpData } from "@/store/dataVersion";
 import type { SimType } from "@/dev/simulateNotification";
 import { buildSimPayload, SIM_BANKS } from "@/dev/simulateNotification";
 
@@ -60,9 +60,8 @@ export default function ProfileScreen() {
     const payload = buildSimPayload(pkg, type, amount);
     const result = await processNotification(payload);
     bumpData();
-    if (result.status === "pending") {
-      setPending(result.transaction, result.notification.id);
-      router.push("/");
+    if (result.status === "stored") {
+      router.push("/notifications" as never);
     } else {
       Alert.alert("Simulação", `Status: ${result.status}`);
     }

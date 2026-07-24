@@ -1,5 +1,6 @@
 import { Ionicons } from "@expo/vector-icons";
-import { ScrollView, StyleSheet, Text, View } from "react-native";
+import { useRouter } from "expo-router";
+import { Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { BalanceHero } from "@/components/BalanceHero";
 import { greetingForHour } from "@/components/greeting";
@@ -12,28 +13,20 @@ import { SectionHeader } from "@/components/SectionHeader";
 import { StatCardsRow } from "@/components/StatCard";
 import { StatusBadge } from "@/components/StatusBadge";
 import { TransactionItem } from "@/components/TransactionItem";
-import { TransactionPreviewModal } from "@/components/TransactionPreviewModal";
 import { colors, radius, spacing, typography } from "@/constants/theme";
 import { useNotifications } from "@/hooks/useNotifications";
 import { useStats } from "@/hooks/useStats";
 import { useTransactions } from "@/hooks/useTransactions";
 import { useWatchedBanks } from "@/hooks/useWatchedBanks";
-import { useRouter } from "expo-router";
 
 export default function HomeScreen() {
   const router = useRouter();
-  const {
-    enabled,
-    notifications,
-    pendingTransaction,
-    approvePending,
-    discardPendingTransaction,
-    openSettings,
-    isAndroid,
-  } = useNotifications();
+  const { enabled, notifications, openSettings, isAndroid } = useNotifications();
   const { count: watchedCount, ready: watchedReady } = useWatchedBanks();
   const { transactions } = useTransactions(3);
   const { stats } = useStats();
+  // ponytail: badge from last-10 sample; exact count if inbox grows past that
+  const hasPending = notifications.some((n) => !n.parsed && !n.discarded);
 
   if (!isAndroid) {
     return (
@@ -51,7 +44,25 @@ export default function HomeScreen() {
         <ScreenHeader
           eyebrow="HOJE"
           title={greetingForHour()}
-          trailing={<StatusBadge active={enabled} />}
+          trailing={
+            <View style={styles.headerActions}>
+              <StatusBadge active={enabled} />
+              <Pressable
+                onPress={() => router.push("/notifications" as never)}
+                hitSlop={8}
+                style={styles.bell}
+                accessibilityRole="button"
+                accessibilityLabel="Notificações"
+              >
+                <Ionicons
+                  name="notifications-outline"
+                  size={20}
+                  color={colors.text}
+                />
+                {hasPending ? <View style={styles.bellDot} /> : null}
+              </Pressable>
+            </View>
+          }
         />
 
         {!enabled ? (
@@ -134,13 +145,6 @@ export default function HomeScreen() {
           </>
         )}
       </ScrollView>
-
-      <TransactionPreviewModal
-        transaction={pendingTransaction}
-        visible={!!pendingTransaction}
-        onApprove={approvePending}
-        onDiscard={discardPendingTransaction}
-      />
     </SafeAreaView>
   );
 }
@@ -196,5 +200,30 @@ const styles = StyleSheet.create({
     color: colors.textTertiary,
     textAlign: "center",
     padding: spacing.base,
+  },
+  headerActions: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.sm,
+    flexShrink: 0,
+  },
+  bell: {
+    width: 44,
+    height: 44,
+    borderRadius: radius.md,
+    backgroundColor: colors.surface,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  bellDot: {
+    position: "absolute",
+    top: 10,
+    right: 10,
+    width: 8,
+    height: 8,
+    borderRadius: radius.full,
+    backgroundColor: colors.primary,
+    borderWidth: 2,
+    borderColor: colors.background,
   },
 });

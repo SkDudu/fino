@@ -27,4 +27,14 @@ console.assert(
   parseEnrichmentJson(`here is json {"merchant":"Padaria","brand":"Padaria","category":"Alimentação","subcategory":"Café","confidence":0.8}`)
     ?.merchant === "Padaria"
 );
+console.assert(
+  parseEnrichmentJson(
+    `<think>raciocinio longo</think>\n{"merchant":"Uber","brand":"Uber","category":"Transporte","subcategory":"App","confidence":0.91}`
+  )?.merchant === "Uber"
+);
+console.assert(
+  parseEnrichmentJson(
+    `<think>ainda pensando\n{"merchant":"Pix","brand":"Pix","category":"Transferência","subcategory":"PIX","confidence":0.8}`
+  )?.merchant === "Pix"
+);
 console.log("ai parseEnrichment ok");

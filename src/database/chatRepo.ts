@@ -86,7 +86,9 @@ export async function saveChatThread(
   updatedAt = Date.now()
 ): Promise<ChatThread> {
   const db = await getDb();
-  const title = titleFromMessages(messages);
+  const existing = await getChatThread(id);
+  // ponytail: keep renamed title; only seed from messages on first save
+  const title = existing?.title.trim() || titleFromMessages(messages);
   await db.runAsync(
     `INSERT INTO chat_threads (id, title, updated_at, messages) VALUES (?, ?, ?, ?)
      ON CONFLICT(id) DO UPDATE SET
@@ -99,4 +101,19 @@ export async function saveChatThread(
     JSON.stringify(messages)
   );
   return { id, title, updatedAt, messages };
+}
+
+export async function renameChatThread(
+  id: string,
+  title: string
+): Promise<void> {
+  const name = title.trim();
+  if (!name) return;
+  const db = await getDb();
+  await db.runAsync(`UPDATE chat_threads SET title = ? WHERE id = ?`, name, id);
+}
+
+export async function deleteChatThread(id: string): Promise<void> {
+  const db = await getDb();
+  await db.runAsync(`DELETE FROM chat_threads WHERE id = ?`, id);
 }

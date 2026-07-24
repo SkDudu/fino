@@ -55,8 +55,16 @@ function parseConfidence(v: unknown): number | null {
   return score;
 }
 
+/** Qwen3 wraps reasoning in <think>; strip so {…} survives. */
+function stripThink(raw: string): string {
+  return raw
+    .replace(/<think>[\s\S]*?<\/think>/gi, "")
+    .replace(/<think>[\s\S]*?(?=\{)/i, "") // ponytail: unclosed think before JSON
+    .trim();
+}
+
 export function parseEnrichmentJson(raw: string): EnrichmentJson | null {
-  const trimmed = raw.trim();
+  const trimmed = stripThink(raw);
   const start = trimmed.indexOf("{");
   const end = trimmed.lastIndexOf("}");
   if (start < 0 || end <= start) return null;

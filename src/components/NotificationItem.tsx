@@ -9,10 +9,16 @@ type Stored = NotificationData & { parsed: boolean };
 type Props = {
   item: Stored;
   onConvert?: () => void;
+  onDiscard?: () => void;
   onViewTransaction?: () => void;
 };
 
-export function NotificationItem({ item, onConvert, onViewTransaction }: Props) {
+export function NotificationItem({
+  item,
+  onConvert,
+  onDiscard,
+  onViewTransaction,
+}: Props) {
   const bank = item.appName || "(sem app)";
   const title =
     [item.title, item.text].filter(Boolean).join(" — ") || "(sem texto)";
@@ -31,9 +37,7 @@ export function NotificationItem({ item, onConvert, onViewTransaction }: Props) 
           {title}
         </Text>
         <Text style={styles.status}>
-          {item.parsed
-            ? "Convertida automaticamente"
-            : "Pronta para converter em transação"}
+          {item.parsed ? "Convertida em transação" : "Aguardando decisão"}
         </Text>
       </View>
       {item.parsed ? (
@@ -42,11 +46,20 @@ export function NotificationItem({ item, onConvert, onViewTransaction }: Props) 
             <Text style={styles.link}>Ver transação</Text>
           </Pressable>
         ) : null
-      ) : onConvert ? (
-        <Pressable style={styles.convertBtn} onPress={onConvert}>
-          <Text style={styles.convertText}>Converter</Text>
-        </Pressable>
-      ) : null}
+      ) : (
+        <View style={styles.actions}>
+          {onConvert ? (
+            <Pressable style={styles.convertBtn} onPress={onConvert}>
+              <Text style={styles.convertText}>Analisar</Text>
+            </Pressable>
+          ) : null}
+          {onDiscard ? (
+            <Pressable style={styles.discardBtn} onPress={onDiscard}>
+              <Text style={styles.discardText}>Descartar</Text>
+            </Pressable>
+          ) : null}
+        </View>
+      )}
     </View>
   );
 }
@@ -80,7 +93,9 @@ const styles = StyleSheet.create({
     color: colors.text,
   },
   status: { ...typography.caption, color: colors.textTertiary },
+  actions: { flexDirection: "row", gap: spacing.sm },
   convertBtn: {
+    flex: 1,
     height: 40,
     borderRadius: radius.md,
     backgroundColor: colors.primarySoft,
@@ -91,6 +106,19 @@ const styles = StyleSheet.create({
     ...typography.small,
     fontFamily: typography.title.fontFamily,
     color: colors.primary,
+  },
+  discardBtn: {
+    flex: 1,
+    height: 40,
+    borderRadius: radius.md,
+    backgroundColor: "#EF44441F",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  discardText: {
+    ...typography.small,
+    fontFamily: typography.title.fontFamily,
+    color: colors.error,
   },
   link: {
     ...typography.small,

@@ -16,6 +16,7 @@ import { Ionicons } from "@expo/vector-icons";
 import {
   ask as askAi,
   getStatus,
+  initialize,
   isModelInstalled,
   isReady,
   subscribeStatus,
@@ -182,8 +183,16 @@ export default function AiScreen() {
     const q = text.trim();
     if (!q || thinking) return;
     if (!(await isReady())) {
-      Alert.alert("Aguarde", "O modelo ainda está carregando.");
-      return;
+      try {
+        await initialize();
+      } catch {
+        Alert.alert("Erro", "Não foi possível carregar o modelo.");
+        return;
+      }
+      if (!(await isReady())) {
+        Alert.alert("Aguarde", "O modelo ainda está carregando.");
+        return;
+      }
     }
     setShowSuggestions(false);
     setInput("");

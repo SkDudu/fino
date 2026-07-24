@@ -9,18 +9,18 @@ O Fino escuta notificações de apps bancários no seu celular, interpreta o con
 ## Como funciona
 
 1. Você concede acesso às notificações do Android.
-2. O app filtra apenas notificações de bancos suportados (Nubank, Inter, Itaú, PicPay, C6, BB, Bradesco, Santander, Mercado Pago e outros).
-3. Um parser por banco extrai os dados da notificação.
-4. Uma prévia da transação aparece para aprovação.
-5. Ao confirmar, o lançamento é salvo no SQLite e entra no saldo e no histórico.
+2. O app grava **toda** notificação dos bancos observados (sem criar lançamento sozinho).
+3. Em **Notificações**, você escolhe **Analisar** ou **Descartar**.
+4. Analisar: parser extrai dados; se a IA local estiver pronta, enriquece; senão usa regras determinísticas.
+5. O lançamento entra no saldo e no histórico.
 
 Nada é enviado para a nuvem. O app funciona offline.
 
 ## Funcionalidades
 
 - **Home** — saldo do dia, resumo de gastos/recebimentos, últimas transações e notificações
-- **Aprovação** — revisar cada transação antes de salvar ou descartar
-- **Histórico** — todas as notificações, transações salvas e descartadas
+- **Notificações** — inbox: analisar (parser + IA opcional) ou descartar
+- **Histórico** — notificações, transações salvas e descartadas
 - **Filtros e busca** — por banco, categoria, tipo e texto
 - **Deduplicação** — evita salvar a mesma notificação duas vezes
 
@@ -70,3 +70,5 @@ npx tsx src/parsers/parser.check.ts
 ## Documentação
 
 - [Spec V3](docs/v3) — especificação do produto
+- [Spec V4 — notificações sob demanda](docs/v4-notifications-on-demand.md)
+- [Build APK Android](docs/build/build-apk-android.md) — gerar e instalar o APK

@@ -201,10 +201,13 @@ export async function selectModel(modelId: string): Promise<void> {
   if (!(await fileExists(modelPathFor(entry)))) {
     throw new Error("MODEL_NOT_INSTALLED");
   }
+  if (status === "RUNNING") throw new Error("INFERENCE_IN_FLIGHT");
   if (context) {
     await context.release();
     context = null;
   }
+  // ponytail: drop in-flight load so we don't finish loading the previous model
+  initPromise = null;
   await setSetting(KEY_ACTIVE, modelId);
   setRuntimeError(null);
   await initialize();

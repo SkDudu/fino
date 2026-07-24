@@ -39,7 +39,11 @@ export default function DiscardedScreen() {
       <View style={styles.filters}>
         <SearchBar value={search} onChange={setSearch} placeholder="Buscar descartada..." />
         {bankOptions.length > 0 ? (
-          <FilterChips options={bankOptions} selected={bank} onSelect={setBank} />
+          <FilterChips
+            options={["Todos", ...bankOptions]}
+            selected={bank ?? "Todos"}
+            onSelect={(v) => setBank(v === "Todos" ? undefined : v)}
+          />
         ) : null}
       </View>
       <FlatList

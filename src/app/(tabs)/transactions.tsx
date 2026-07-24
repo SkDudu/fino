@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { FlatList, StyleSheet, Text, View } from "react-native";
+import { FlatList, StyleSheet, Text } from "react-native";
 import { useRouter } from "expo-router";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { FilterChips } from "@/components/FilterChips";
@@ -69,13 +69,11 @@ export default function TransactionsScreen() {
   return (
     <SafeAreaView style={styles.container} edges={["top"]}>
       <ScreenHeader eyebrow="HISTÓRICO" title="Transações" />
-      <View style={styles.chips}>
-        <FilterChips
-          options={["PIX", "Cartão", "Débito"]}
-          selected={chip === "Todos" ? undefined : chip}
-          onSelect={(v) => setChip((v as Chip) ?? "Todos")}
-        />
-      </View>
+      <FilterChips
+        options={["Todos", "PIX", "Cartão", "Débito"]}
+        selected={chip}
+        onSelect={(v) => setChip(v as Chip)}
+      />
       <FlatList
         data={rows}
         keyExtractor={(row) => row.key}
@@ -101,7 +99,6 @@ export default function TransactionsScreen() {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.background },
-  chips: { paddingHorizontal: spacing.lg },
   day: {
     ...typography.caption,
     color: colors.textTertiary,
