@@ -1,4 +1,11 @@
-import { Pressable, StyleSheet, Text, View } from "react-native";
+import { useState } from "react";
+import {
+  ActivityIndicator,
+  Pressable,
+  StyleSheet,
+  Text,
+  View,
+} from "react-native";
 import type { NotificationData } from "@/types/notification";
 import { colors, radius, spacing, typography } from "@/constants/theme";
 import { bankColor } from "./bankColor";
@@ -8,8 +15,8 @@ type Stored = NotificationData & { parsed: boolean };
 
 type Props = {
   item: Stored;
-  onConvert?: () => void;
-  onDiscard?: () => void;
+  onConvert?: () => void | Promise<void>;
+  onDiscard?: () => void | Promise<void>;
   onViewTransaction?: () => void;
 };
 
@@ -19,6 +26,7 @@ export function NotificationItem({
   onDiscard,
   onViewTransaction,
 }: Props) {
+  const [busy, setBusy] = useState(false);
   const bank = item.appName || "(sem app)";
   const title =
     [item.title, item.text].filter(Boolean).join(" — ") || "(sem texto)";
@@ -37,7 +45,11 @@ export function NotificationItem({
           {title}
         </Text>
         <Text style={styles.status}>
-          {item.parsed ? "Convertida em transação" : "Aguardando decisão"}
+          {item.parsed
+            ? "Convertida em transação"
+            : busy
+              ? "Analisando…"
+              : "Aguardando decisão"}
         </Text>
       </View>
       {item.parsed ? (
@@ -49,12 +61,32 @@ export function NotificationItem({
       ) : (
         <View style={styles.actions}>
           {onConvert ? (
-            <Pressable style={styles.convertBtn} onPress={onConvert}>
-              <Text style={styles.convertText}>Analisar</Text>
+            <Pressable
+              style={styles.convertBtn}
+              disabled={busy}
+              onPress={async () => {
+                if (busy) return;
+                setBusy(true);
+                try {
+                  await onConvert();
+                } finally {
+                  setBusy(false);
+                }
+              }}
+            >
+              {busy ? (
+                <ActivityIndicator size="small" color={colors.primary} />
+              ) : (
+                <Text style={styles.convertText}>Analisar</Text>
+              )}
             </Pressable>
           ) : null}
           {onDiscard ? (
-            <Pressable style={styles.discardBtn} onPress={onDiscard}>
+            <Pressable
+              style={styles.discardBtn}
+              disabled={busy}
+              onPress={onDiscard}
+            >
               <Text style={styles.discardText}>Descartar</Text>
             </Pressable>
           ) : null}

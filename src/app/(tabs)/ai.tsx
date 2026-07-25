@@ -13,6 +13,7 @@ import {
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
+import { GripThinkingIcon } from "@/components/GripThinkingIcon";
 import {
   ask as askAi,
   getStatus,
@@ -455,7 +456,11 @@ export default function AiScreen() {
                     <View style={styles.aiDot} />
                     <Text style={styles.aiName}>Fino IA</Text>
                   </View>
-                  <Text style={styles.aiText}>{m.text}</Text>
+                  {thinking && !m.text ? (
+                    <GripThinkingIcon size={22} color={colors.accent} />
+                  ) : (
+                    <Text style={styles.aiText}>{m.text}</Text>
+                  )}
                 </View>
                 {m.usage ? (
                   <Text style={styles.tokenMeta}>
