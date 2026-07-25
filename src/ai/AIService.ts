@@ -26,8 +26,16 @@ import {
 } from "./builders/PromptBuilder";
 import type { EnrichmentMessages } from "./builders/PromptTemplates";
 import { handleChatQuestion } from "./conversation/ConversationManager";
-import { registerInference, type InferOptions } from "./InferenceEngine";
+import {
+  registerInference,
+  type InferOptions,
+  type InferResult,
+} from "./InferenceEngine";
 import { formatAiError } from "./formatAiError";
+import { getAiMode, getApiKey, getOnlineModel, hasApiKey } from "./aiSettings";
+import type { TokenUsage } from "./deepseekPricing";
+import { onlineInfer } from "./onlineInfer";
+import { redactForOnline } from "./redactForOnline";
 
 export { formatAiError } from "./formatAiError";
 
@@ -222,7 +230,13 @@ export async function isModelInstalled(): Promise<boolean> {
   }
 }
 
+export async function isAiReady(): Promise<boolean> {
+  if ((await getAiMode()) === "online") return hasApiKey();
+  return isModelInstalled();
+}
+
 export async function isReady(): Promise<boolean> {
+  if ((await getAiMode()) === "online") return hasApiKey();
   return status === "READY" && context != null;
 }
 
@@ -506,10 +520,34 @@ function toChatMessages({ system, user }: EnrichmentMessages) {
   ];
 }
 
+async function inferOnline(
+  messages: EnrichmentMessages,
+  opts?: InferOptions
+): Promise<InferResult> {
+  const apiKey = await getApiKey();
+  if (!apiKey) throw new Error("ONLINE_NO_KEY");
+  const model = await getOnlineModel();
+  setStatus("RUNNING");
+  try {
+    const { text, usage } = await onlineInfer(messages, { apiKey, model });
+    // ponytail: no SSE in v1 — deliver full text once for chat UI
+    if (opts?.onToken && text) opts.onToken(text);
+    return { text, usage };
+  } catch (e) {
+    const code = e instanceof Error ? e.message : "ONLINE_FAILED";
+    setRuntimeError(code);
+    throw new Error(code);
+  } finally {
+    setStatus("READY");
+  }
+}
+
 async function inferMessages(
   messages: EnrichmentMessages,
   opts?: InferOptions
-): Promise<string> {
+): Promise<InferResult> {
+  if ((await getAiMode()) === "online") return inferOnline(messages, opts);
+
   if (!context) {
     if (!(await isModelInstalled())) throw new Error("MODEL_NOT_INSTALLED");
     await initialize();
@@ -534,7 +572,7 @@ async function inferMessages(
           }
         : undefined
     );
-    return result.text ?? "";
+    return { text: result.text ?? "" };
   } catch (e) {
     const code = e instanceof Error ? e.message : "INFERENCE_FAILED";
     setRuntimeError(code === "PROMPT_TOO_LARGE" ? code : "INFERENCE_FAILED");
@@ -544,19 +582,28 @@ async function inferMessages(
   }
 }
 
+export type EnrichResult = {
+  json: EnrichmentJson;
+  usage?: TokenUsage;
+};
+
 export async function enrichFromText(
   rawText: string
-): Promise<EnrichmentJson | null> {
-  if (!(await isModelInstalled())) return null;
+): Promise<EnrichResult | null> {
+  if (!(await isAiReady())) return null;
   try {
-    if (!(await isReady())) await initialize();
-    const entry = await getActiveEntry();
-    const text = await inferMessages(buildEnrichmentMessages(rawText), {
-      nPredict: Math.max(entry.nPredict ?? 128, 256),
-    });
+    const mode = await getAiMode();
+    if (mode === "local" && !(await isReady())) await initialize();
+    const entry =
+      mode === "local" ? await getActiveEntry() : { nPredict: 256 };
+    const payload = mode === "online" ? redactForOnline(rawText) : rawText;
+    const { text, usage } = await inferMessages(
+      buildEnrichmentMessages(payload),
+      { nPredict: Math.max(entry.nPredict ?? 128, 256) }
+    );
     const parsed = parseEnrichmentJson(text);
     if (!parsed) throw new Error("INVALID_AI_RESPONSE");
-    return parsed;
+    return { json: parsed, usage };
   } catch (e) {
     const code = e instanceof Error ? e.message : "UNKNOWN";
     setRuntimeError(code);
@@ -564,19 +611,29 @@ export async function enrichFromText(
   }
 }
 
+export type AskResult = { text: string; usage?: TokenUsage };
+
 export async function ask(
   question: string,
   onToken?: (token: string) => void
-): Promise<string> {
-  if (!(await isModelInstalled())) throw new Error("MODEL_NOT_INSTALLED");
-  if (!(await isReady())) await initialize();
+): Promise<AskResult> {
+  if (!(await isAiReady())) {
+    throw new Error(
+      (await getAiMode()) === "online" ? "ONLINE_NO_KEY" : "MODEL_NOT_INSTALLED"
+    );
+  }
+  if ((await getAiMode()) === "local" && !(await isReady())) await initialize();
   return handleChatQuestion(question, onToken);
 }
 
 export async function testInference(): Promise<EnrichmentJson> {
-  if (!(await isModelInstalled())) throw new Error("MODEL_NOT_INSTALLED");
-  if (!(await isReady())) await initialize();
-  const text = await inferMessages(buildTestMessages());
+  if (!(await isAiReady())) {
+    throw new Error(
+      (await getAiMode()) === "online" ? "ONLINE_NO_KEY" : "MODEL_NOT_INSTALLED"
+    );
+  }
+  if ((await getAiMode()) === "local" && !(await isReady())) await initialize();
+  const { text } = await inferMessages(buildTestMessages());
   const parsed = parseEnrichmentJson(text);
   if (!parsed) throw new Error("INVALID_AI_RESPONSE");
   return parsed;

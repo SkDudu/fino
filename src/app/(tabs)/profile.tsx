@@ -12,6 +12,12 @@ import {
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { isModelInstalled } from "@/ai/AIService";
+import {
+  getAiMode,
+  getOnlineModel,
+  hasApiKey,
+  onlineModelShortLabel,
+} from "@/ai/aiSettings";
 import { ScreenHeader } from "@/components/ScreenHeader";
 import { SettingsRow } from "@/components/SettingsRow";
 import { colors, radius, spacing, typography } from "@/constants/theme";
@@ -30,13 +36,26 @@ export default function ProfileScreen() {
   const { enabled, openSettings, isAndroid } = useNotifications();
   const { banks } = useWatchedBanks();
   const version = Constants.expoConfig?.version ?? "1.0.0";
-  const [aiInstalled, setAiInstalled] = useState(false);
+  const [aiSubtitle, setAiSubtitle] = useState("…");
 
   const [bankModal, setBankModal] = useState(false);
 
   useFocusEffect(
     useCallback(() => {
-      isModelInstalled().then(setAiInstalled);
+      void (async () => {
+        const mode = await getAiMode();
+        if (mode === "online") {
+          if (!(await hasApiKey())) {
+            setAiSubtitle("Online · sem API key");
+            return;
+          }
+          setAiSubtitle(`Online · ${onlineModelShortLabel(await getOnlineModel())}`);
+          return;
+        }
+        setAiSubtitle(
+          (await isModelInstalled()) ? "Offline · modelo instalado" : "Offline · sem modelo"
+        );
+      })();
     }, [])
   );
   const banksSubtitle =
@@ -128,8 +147,8 @@ export default function ProfileScreen() {
       />
       <SettingsRow
         icon="hardware-chip-outline"
-        title="AI Local"
-        subtitle={aiInstalled ? "1 modelo" : "Nenhum modelo baixado"}
+        title="IA"
+        subtitle={aiSubtitle}
         onPress={() => router.push("/ai-local" as never)}
       />
       <SettingsRow

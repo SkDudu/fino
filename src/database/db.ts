@@ -92,6 +92,18 @@ CREATE TABLE IF NOT EXISTS chat_threads (
   updated_at INTEGER NOT NULL,
   messages TEXT NOT NULL
 );
+
+CREATE TABLE IF NOT EXISTS ai_usage (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  model TEXT NOT NULL,
+  kind TEXT NOT NULL,
+  prompt_tokens INTEGER NOT NULL,
+  completion_tokens INTEGER NOT NULL,
+  cache_hit_tokens INTEGER NOT NULL DEFAULT 0,
+  cache_miss_tokens INTEGER NOT NULL DEFAULT 0,
+  cost_usd REAL NOT NULL,
+  created_at TEXT NOT NULL
+);
 `;
 
 const TX_COLUMNS: [string, string][] = [

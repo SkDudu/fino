@@ -1,8 +1,10 @@
 import { listTransactions } from "@/database/transactionsRepo";
+import { insertAiUsage } from "@/database/aiUsageRepo";
 import { buildChatMessages } from "../builders/PromptBuilder";
 import { describeChatFilters, resolveChatFilters } from "../resolveChatFilters";
 import { buildConversationBlock } from "./ConversationContext";
 import { inferChat } from "../InferenceEngine";
+import type { TokenUsage } from "../deepseekPricing";
 import { executeSqlList, executeSqlSum } from "../planner/plannerSql";
 import { planQuestion } from "../planner/plannerRules";
 import {
@@ -18,15 +20,17 @@ import {
   updateMemory,
 } from "./ConversationStore";
 
+export type ChatAnswer = { text: string; usage?: TokenUsage };
+
 export async function handleChatQuestion(
   question: string,
   onToken?: (token: string) => void
-): Promise<string> {
+): Promise<ChatAnswer> {
   const plan = planQuestion(question);
 
   if (plan.kind === "memory") {
     updateDirectReply(question, plan.answer);
-    return plan.answer;
+    return { text: plan.answer };
   }
 
   if (plan.kind === "sql_sum") {
@@ -42,7 +46,7 @@ export async function handleChatQuestion(
       lastQuery: queryHint,
       txs,
     });
-    return answer;
+    return { text: answer };
   }
 
   if (plan.kind === "sql_list") {
@@ -54,7 +58,7 @@ export async function handleChatQuestion(
       lastQuery: queryHint,
       txs,
     });
-    return answer;
+    return { text: answer };
   }
 
   const filters = resolveChatFilters(question);
@@ -63,26 +67,31 @@ export async function handleChatQuestion(
   const queryHint = describeChatFilters(filters);
   const sqliteContext = buildSummaryContext(txs, queryHint);
 
-  let reply: string;
+  let reply = "";
+  let usage: TokenUsage | undefined;
   try {
     const messages = buildChatMessages(
       question,
       sqliteContext,
       plan.conversationBlock
     );
-    reply = (
-      await inferChat(messages, {
-        onToken: onToken
-          ? (token) => {
-              onToken(token);
-            }
-          : undefined,
-      })
-    ).trim();
+    const result = await inferChat(messages, {
+      onToken: onToken
+        ? (token) => {
+            onToken(token);
+          }
+        : undefined,
+    });
+    reply = result.text.trim();
+    usage = result.usage;
   } catch {
     reply = "";
   }
   if (!reply) reply = buildSummaryFallback(txs, queryHint);
+
+  if (usage) {
+    void insertAiUsage(usage, "chat").catch(() => {});
+  }
 
   updateMemory({
     lastIntent: plan.intent,
@@ -92,7 +101,7 @@ export async function handleChatQuestion(
     txs,
   });
 
-  return reply;
+  return { text: reply, usage };
 }
 
 export function getCurrentContext(): string {
@@ -100,9 +109,4 @@ export function getCurrentContext(): string {
   return mem ? buildConversationBlock(mem) : "";
 }
 
-export {
-  clearConversation,
-  expireConversation,
-  getMemory,
-  startConversation,
-};
+export { clearConversation, expireConversation, startConversation };

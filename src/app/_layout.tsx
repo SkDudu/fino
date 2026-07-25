@@ -33,6 +33,12 @@ export default function RootLayout() {
 
   useEffect(() => {
     const sub = AppState.addEventListener("change", (next) => {
+      if (next === "active") {
+        void import("@/ai/usdBrlRate").then(({ ensureUsdBrlRate }) => {
+          void ensureUsdBrlRate();
+        });
+        return;
+      }
       if (next !== "background") return;
       void import("@/ai/AIService").then(({ getStatus, releaseModelIfNotKept }) => {
         if (getStatus() !== "RUNNING") void releaseModelIfNotKept();
@@ -47,7 +53,12 @@ export default function RootLayout() {
 
     initDb()
       .then(() => syncWatchedToNative())
-      .then(() => getSetting("onboarding_done"))
+      .then(() => {
+        void import("@/ai/usdBrlRate").then(({ ensureUsdBrlRate }) => {
+          void ensureUsdBrlRate();
+        });
+        return getSetting("onboarding_done");
+      })
       .then((v) => {
         if (cancelled) return;
         setReady(true);

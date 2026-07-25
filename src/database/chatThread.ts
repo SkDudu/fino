@@ -1,4 +1,19 @@
-export type ChatMsg = { id: string; role: "ai" | "user"; text: string };
+import type { OnlineModelId } from "@/ai/aiSettings";
+
+export type ChatMsgUsage = {
+  model: OnlineModelId;
+  promptTokens: number;
+  completionTokens: number;
+  totalTokens: number;
+  costUsd: number;
+};
+
+export type ChatMsg = {
+  id: string;
+  role: "ai" | "user";
+  text: string;
+  usage?: ChatMsgUsage;
+};
 
 export type ChatThreadSummary = {
   id: string;

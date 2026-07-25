@@ -17,10 +17,20 @@ import {
   ask as askAi,
   getStatus,
   initialize,
-  isModelInstalled,
+  isAiReady,
   isReady,
   subscribeStatus,
 } from "@/ai/AIService";
+import {
+  getAiMode,
+  getOnlineModel,
+  type OnlineModelId,
+} from "@/ai/aiSettings";
+import {
+  formatCostBrl,
+  formatTokenCount,
+  modelShort,
+} from "@/ai/deepseekPricing";
 import { clearConversation } from "@/ai/conversation/ConversationStore";
 import type { AiStatus } from "@/ai/constants";
 import { DEFAULT_MODEL_ID } from "@/ai/constants";
@@ -34,9 +44,15 @@ import {
   type ChatMsg,
 } from "@/database/chatRepo";
 import { initDb } from "@/database/db";
+import {
+  sumUsageByModelMonth,
+  type UsageByModel,
+} from "@/database/aiUsageRepo";
 
 const WELCOME_READY =
   "Modelo carregado. Pergunte sobre seus gastos ou escolha uma sugestão abaixo.";
+const WELCOME_ONLINE =
+  "DeepSeek online. Pergunte sobre seus gastos ou escolha uma sugestão abaixo.";
 
 const SUGGESTIONS = [
   "Resumo da semana",
@@ -56,11 +72,43 @@ const SIZE_HINT =
     ? `~${Math.round(defaultSize / (1024 * 1024))} MB`
     : "~650 MB";
 
-function chipLabel(status: AiStatus): string {
+const MONTH_LABEL = new Date()
+  .toLocaleDateString("pt-BR", { month: "long" })
+  .toUpperCase();
+
+function chipLabel(
+  status: AiStatus,
+  online: boolean,
+  onlineModel: OnlineModelId | null
+): string {
+  if (online) return `Online · ${onlineModel ? modelShort(onlineModel) : "DeepSeek"}`;
   if (status === "READY" || status === "RUNNING") return "Modelo pronto · offline";
   if (status === "LOADING") return "Carregando na memória…";
   if (status === "ERROR") return "Erro no modelo";
   return "Instalado";
+}
+
+function sessionUsage(msgs: ChatMsg[]): { tokens: number; costUsd: number; model?: OnlineModelId } {
+  let tokens = 0;
+  let costUsd = 0;
+  let model: OnlineModelId | undefined;
+  for (const m of msgs) {
+    if (!m.usage) continue;
+    tokens += m.usage.totalTokens;
+    costUsd += m.usage.costUsd;
+    model = m.usage.model;
+  }
+  return { tokens, costUsd, model };
+}
+
+function monthStripLabel(byModel: UsageByModel[], totalUsd: number): string {
+  const flash = byModel.find((r) => r.model === "deepseek-v4-flash");
+  const pro = byModel.find((r) => r.model === "deepseek-v4-pro");
+  const parts: string[] = [];
+  if (flash?.totalTokens) parts.push(`flash ${formatTokenCount(flash.totalTokens)}`);
+  if (pro?.totalTokens) parts.push(`pro ${formatTokenCount(pro.totalTokens)}`);
+  if (!parts.length) return "sem uso ainda";
+  return `${parts.join(" · ")} ≈ ${formatCostBrl(totalUsd)}`;
 }
 
 function chipColor(status: AiStatus): string {
@@ -98,6 +146,8 @@ export default function AiScreen() {
   const router = useRouter();
   const params = useLocalSearchParams<{ id?: string; new?: string }>();
   const [installed, setInstalled] = useState<boolean | null>(null);
+  const [onlineMode, setOnlineMode] = useState(false);
+  const [onlineModel, setOnlineModel] = useState<OnlineModelId | null>(null);
   const [runtimeStatus, setRuntimeStatus] = useState<AiStatus>(getStatus());
   const [threadId, setThreadId] = useState<string | null>(null);
   const [threadTitle, setThreadTitle] = useState<string | null>(null);
@@ -105,6 +155,7 @@ export default function AiScreen() {
   const [input, setInput] = useState("");
   const [showSuggestions, setShowSuggestions] = useState(true);
   const [thinking, setThinking] = useState(false);
+  const [monthByModel, setMonthByModel] = useState<UsageByModel[]>([]);
   const scrollRef = useRef<ScrollView>(null);
   const persistBusy = useRef(false);
 
@@ -115,6 +166,11 @@ export default function AiScreen() {
   useEffect(() => {
     scrollToEnd();
   }, [msgs, showSuggestions, scrollToEnd]);
+
+  const refreshMonth = useCallback(async () => {
+    await initDb();
+    setMonthByModel(await sumUsageByModelMonth());
+  }, []);
 
   const resetNew = useCallback(() => {
     clearConversation();
@@ -127,11 +183,27 @@ export default function AiScreen() {
 
   useFocusEffect(
     useCallback(() => {
-      void isModelInstalled().then(setInstalled);
-      void isReady().then((ready) => {
-        if (ready) setRuntimeStatus("READY");
-        else setRuntimeStatus(getStatus());
-      });
+      void (async () => {
+        const mode = await getAiMode();
+        setOnlineMode(mode === "online");
+        if (mode === "online") setOnlineModel(await getOnlineModel());
+        else setOnlineModel(null);
+        const ready = await isAiReady();
+        setInstalled(ready);
+        if (mode === "online" && ready) {
+          setRuntimeStatus("READY");
+          setMsgs((prev) =>
+            prev.length === 1 && prev[0].id === "welcome"
+              ? [{ ...WELCOME_MSG, text: WELCOME_ONLINE }]
+              : prev
+          );
+        } else if (await isReady()) {
+          setRuntimeStatus("READY");
+        } else {
+          setRuntimeStatus(getStatus());
+        }
+        void refreshMonth();
+      })();
       const unsub = subscribeStatus(setRuntimeStatus);
 
       const id = typeof params.id === "string" ? params.id : undefined;
@@ -157,7 +229,7 @@ export default function AiScreen() {
       }
 
       return unsub;
-    }, [params.id, params.new, resetNew, router])
+    }, [params.id, params.new, resetNew, router, refreshMonth])
   );
 
   const canSend = useMemo(
@@ -166,6 +238,11 @@ export default function AiScreen() {
   );
   const chipTint = chipColor(runtimeStatus);
   const inThread = threadId != null && threadTitle != null;
+  const session = useMemo(() => sessionUsage(msgs), [msgs]);
+  const monthTotalUsd = useMemo(
+    () => monthByModel.reduce((s, r) => s + r.costUsd, 0),
+    [monthByModel]
+  );
 
   async function persist(next: ChatMsg[], id: string) {
     if (persistBusy.current) return;
@@ -182,7 +259,16 @@ export default function AiScreen() {
   async function sendQuestion(text: string) {
     const q = text.trim();
     if (!q || thinking) return;
-    if (!(await isReady())) {
+    if (!(await isAiReady())) {
+      Alert.alert(
+        "IA indisponível",
+        (await getAiMode()) === "online"
+          ? "Configure a API key em Perfil → IA."
+          : "Baixe um modelo local em Perfil → IA."
+      );
+      return;
+    }
+    if ((await getAiMode()) === "local" && !(await isReady())) {
       try {
         await initialize();
       } catch {
@@ -213,7 +299,7 @@ export default function AiScreen() {
     try {
       await initDb();
       let streamed = "";
-      const reply = await askAi(q, (token) => {
+      const { text: reply, usage } = await askAi(q, (token) => {
         streamed += token;
         const text = streamed;
         setMsgs((prev) => {
@@ -225,13 +311,25 @@ export default function AiScreen() {
         });
       });
       const finalText = reply.trim() || streamed.trim() || "Sem resposta.";
+      const msgUsage = usage
+        ? {
+            model: usage.model,
+            promptTokens: usage.promptTokens,
+            completionTokens: usage.completionTokens,
+            totalTokens: usage.totalTokens,
+            costUsd: usage.costUsd,
+          }
+        : undefined;
       setMsgs((prev) => {
         const next = prev.map((m) =>
-          m.id === replyId ? { ...m, text: finalText } : m
+          m.id === replyId
+            ? { ...m, text: finalText, usage: msgUsage }
+            : m
         );
         finalMsgs = next;
         return next;
       });
+      if (usage) void refreshMonth();
     } catch {
       setMsgs((prev) => {
         const next = prev.map((m) =>
@@ -316,11 +414,26 @@ export default function AiScreen() {
         }
         trailing={headerActions}
       />
-      <View style={[styles.readyChip, { backgroundColor: `${chipTint}1F` }]}>
-        <View style={[styles.readyDot, { backgroundColor: chipTint }]} />
-        <Text style={[styles.readyText, { color: chipTint }]}>
-          {chipLabel(runtimeStatus)}
-        </Text>
+      <View style={styles.statusRow}>
+        <View style={[styles.readyChip, { backgroundColor: `${chipTint}1F` }]}>
+          <View style={[styles.readyDot, { backgroundColor: chipTint }]} />
+          <Text style={[styles.readyText, { color: chipTint }]}>
+            {chipLabel(runtimeStatus, onlineMode, onlineModel)}
+          </Text>
+        </View>
+        {onlineMode && session.tokens > 0 ? (
+          <View style={styles.sessionUso}>
+            <Text style={styles.sessionMuted}>Sessão</Text>
+            <Text style={styles.sessionStrong}>
+              {formatTokenCount(session.tokens)}
+            </Text>
+            {session.model ? (
+              <Text style={styles.sessionMuted}>{modelShort(session.model)}</Text>
+            ) : null}
+            <Text style={styles.sessionMuted}>·</Text>
+            <Text style={styles.sessionCost}>{formatCostBrl(session.costUsd)}</Text>
+          </View>
+        ) : null}
       </View>
       <KeyboardAvoidingView
         style={styles.chatBody}
@@ -336,12 +449,20 @@ export default function AiScreen() {
         >
           {msgs.map((m) =>
             m.role === "ai" ? (
-              <View key={m.id} style={styles.aiBubble}>
-                <View style={styles.aiHead}>
-                  <View style={styles.aiDot} />
-                  <Text style={styles.aiName}>Fino IA</Text>
+              <View key={m.id} style={styles.aiBlock}>
+                <View style={styles.aiBubble}>
+                  <View style={styles.aiHead}>
+                    <View style={styles.aiDot} />
+                    <Text style={styles.aiName}>Fino IA</Text>
+                  </View>
+                  <Text style={styles.aiText}>{m.text}</Text>
                 </View>
-                <Text style={styles.aiText}>{m.text}</Text>
+                {m.usage ? (
+                  <Text style={styles.tokenMeta}>
+                    {formatTokenCount(m.usage.totalTokens)} ·{" "}
+                    {modelShort(m.usage.model)} · {formatCostBrl(m.usage.costUsd)}
+                  </Text>
+                ) : null}
               </View>
             ) : (
               <View key={m.id} style={styles.userWrap}>
@@ -367,6 +488,20 @@ export default function AiScreen() {
             </View>
           ) : null}
         </ScrollView>
+        {onlineMode ? (
+          <Pressable
+            style={styles.usoMes}
+            onPress={() => router.push("/ai-local" as never)}
+          >
+            <View style={styles.usoMesLeft}>
+              <Text style={styles.usoMesLabel}>USO · {MONTH_LABEL}</Text>
+              <Text style={styles.usoMesValue}>
+                {monthStripLabel(monthByModel, monthTotalUsd)}
+              </Text>
+            </View>
+            <Text style={styles.usoMesLink}>Detalhes</Text>
+          </Pressable>
+        ) : null}
         <View style={styles.composer}>
           <TextInput
             style={styles.input}
@@ -474,11 +609,34 @@ const styles = StyleSheet.create({
     alignItems: "center",
     alignSelf: "flex-start",
     gap: spacing.sm,
-    marginHorizontal: spacing.lg,
-    marginBottom: spacing.md,
     paddingHorizontal: spacing.md,
     paddingVertical: spacing.sm,
     borderRadius: radius.full,
+  },
+  statusRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: spacing.sm,
+    marginHorizontal: spacing.lg,
+    marginBottom: spacing.md,
+  },
+  sessionUso: {
+    flexDirection: "row",
+    alignItems: "baseline",
+    gap: 6,
+    flexShrink: 1,
+  },
+  sessionMuted: { ...typography.caption, color: colors.textTertiary },
+  sessionStrong: {
+    ...typography.small,
+    fontFamily: typography.title.fontFamily,
+    color: colors.text,
+  },
+  sessionCost: {
+    ...typography.small,
+    fontFamily: typography.title.fontFamily,
+    color: colors.secondary,
   },
   readyDot: { width: 8, height: 8, borderRadius: radius.full },
   readyText: {
@@ -494,6 +652,7 @@ const styles = StyleSheet.create({
     paddingTop: spacing.sm,
     paddingBottom: spacing.xl,
   },
+  aiBlock: { gap: 6 },
   aiBubble: {
     padding: spacing.base,
     borderRadius: radius.lg,
@@ -509,6 +668,11 @@ const styles = StyleSheet.create({
   },
   aiName: { ...typography.caption, color: colors.accent },
   aiText: { ...typography.body, color: colors.text },
+  tokenMeta: {
+    ...typography.caption,
+    color: colors.textTertiary,
+    paddingLeft: 4,
+  },
   userWrap: { alignItems: "flex-end" },
   userBubble: {
     maxWidth: "80%",
@@ -532,6 +696,32 @@ const styles = StyleSheet.create({
     backgroundColor: colors.surface,
   },
   sugText: { ...typography.body, color: colors.text },
+  usoMes: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: spacing.md,
+    paddingHorizontal: spacing.lg,
+    paddingVertical: spacing.md,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: colors.divider,
+  },
+  usoMesLeft: { gap: 2, flex: 1 },
+  usoMesLabel: {
+    ...typography.caption,
+    color: colors.textTertiary,
+    letterSpacing: 0.8,
+  },
+  usoMesValue: {
+    ...typography.small,
+    fontFamily: typography.title.fontFamily,
+    color: colors.text,
+  },
+  usoMesLink: {
+    ...typography.caption,
+    fontFamily: typography.title.fontFamily,
+    color: colors.primary,
+  },
   composer: {
     flexDirection: "row",
     gap: spacing.sm,
