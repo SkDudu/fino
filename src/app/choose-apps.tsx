@@ -1,6 +1,6 @@
 import { Ionicons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   FlatList,
   Pressable,
@@ -9,12 +9,16 @@ import {
   View,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
-import { getInstalledApps, type InstalledApp } from "notification-listener";
+import type { InstalledApp } from "notification-listener";
 import { PrimaryButton } from "@/components/PrimaryButton";
 import { SearchBar } from "@/components/SearchBar";
 import { bankColor } from "@/components/bankColor";
 import { colors, radius, spacing, typography } from "@/constants/theme";
 import { useWatchedBanks } from "@/hooks/useWatchedBanks";
+import {
+  loadInstalledApps,
+  peekInstalledApps,
+} from "@/services/installedApps";
 
 function initials(label: string): string {
   const parts = label.trim().split(/\s+/);
@@ -24,18 +28,26 @@ function initials(label: string): string {
 
 export default function ChooseAppsScreen() {
   const router = useRouter();
-  const { banks, replace } = useWatchedBanks();
-  const [apps, setApps] = useState<InstalledApp[]>([]);
+  const { banks, ready, replace } = useWatchedBanks();
+  const [apps, setApps] = useState<InstalledApp[]>(() => peekInstalledApps() ?? []);
+  const [appsReady, setAppsReady] = useState(() => peekInstalledApps() != null);
   const [search, setSearch] = useState("");
   const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [saving, setSaving] = useState(false);
+  const hydrated = useRef(false);
 
   useEffect(() => {
-    setApps(getInstalledApps());
-  }, []);
+    if (appsReady) return;
+    setApps(loadInstalledApps());
+    setAppsReady(true);
+  }, [appsReady]);
 
+  // ponytail: hydrate selection once — re-syncing on every banks[] wipe toggles mid-tap
   useEffect(() => {
+    if (!ready || hydrated.current) return;
+    hydrated.current = true;
     setSelected(new Set(banks.map((b) => b.packageName)));
-  }, [banks]);
+  }, [ready, banks]);
 
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
@@ -57,11 +69,22 @@ export default function ChooseAppsScreen() {
   }
 
   async function continueFlow() {
-    const next = apps
-      .filter((a) => selected.has(a.packageName))
-      .map((a) => ({ packageName: a.packageName, label: a.label }));
-    await replace(next);
-    router.replace("/watched-banks" as never);
+    if (saving || !appsReady) return;
+    setSaving(true);
+    try {
+      // ponytail: build from selected, not apps.filter — survives shape/key mismatches
+      const labels = new Map(apps.map((a) => [a.packageName, a.label]));
+      const next = [...selected]
+        .filter(Boolean)
+        .map((packageName) => ({
+          packageName,
+          label: labels.get(packageName) ?? packageName,
+        }));
+      await replace(next);
+      router.replace("/watched-banks" as never);
+    } finally {
+      setSaving(false);
+    }
   }
 
   return (
@@ -106,7 +129,9 @@ export default function ChooseAppsScreen() {
           );
         }}
         ListEmptyComponent={
-          <Text style={styles.empty}>Nenhum app encontrado</Text>
+          <Text style={styles.empty}>
+            {appsReady ? "Nenhum app encontrado" : "Carregando apps…"}
+          </Text>
         }
       />
 
@@ -117,7 +142,8 @@ export default function ChooseAppsScreen() {
         </Text>
         <PrimaryButton
           label="Continuar"
-          onPress={continueFlow}
+          onPress={() => void continueFlow()}
+          loading={saving || !appsReady}
           style={styles.cta}
         />
       </View>

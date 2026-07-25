@@ -1,5 +1,6 @@
 import { Ionicons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
+import { useState } from "react";
 import { Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { BalanceHero } from "@/components/BalanceHero";
@@ -18,6 +19,7 @@ import { useNotifications } from "@/hooks/useNotifications";
 import { useStats } from "@/hooks/useStats";
 import { useTransactions } from "@/hooks/useTransactions";
 import { useWatchedBanks } from "@/hooks/useWatchedBanks";
+import { loadInstalledApps } from "@/services/installedApps";
 
 export default function HomeScreen() {
   const router = useRouter();
@@ -25,8 +27,22 @@ export default function HomeScreen() {
   const { count: watchedCount, ready: watchedReady } = useWatchedBanks();
   const { transactions } = useTransactions(3);
   const { stats } = useStats();
+  const [loadingApps, setLoadingApps] = useState(false);
   // ponytail: badge from last-10 sample; exact count if inbox grows past that
   const hasPending = notifications.some((n) => !n.parsed && !n.discarded);
+
+  async function openChooseApps() {
+    if (loadingApps) return;
+    setLoadingApps(true);
+    try {
+      // yield so the spinner paints before the (sync) native query
+      await new Promise<void>((r) => setTimeout(r, 0));
+      loadInstalledApps();
+      router.push("/choose-apps" as never);
+    } finally {
+      setLoadingApps(false);
+    }
+  }
 
   if (!isAndroid) {
     return (
@@ -90,7 +106,8 @@ export default function HomeScreen() {
             </Text>
             <PrimaryButton
               label="Adicionar bancos"
-              onPress={() => router.push("/choose-apps" as never)}
+              onPress={() => void openChooseApps()}
+              loading={loadingApps}
             />
             <Text style={styles.micro}>Só apps instalados neste aparelho</Text>
           </View>

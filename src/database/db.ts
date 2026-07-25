@@ -1,7 +1,7 @@
 import * as SQLite from "expo-sqlite";
 import { ORPHAN_AI_SETTING_KEYS } from "./orphanAiSettings";
 
-let db: SQLite.SQLiteDatabase | null = null;
+let db: Promise<SQLite.SQLiteDatabase> | null = null;
 
 const SCHEMA = `
 PRAGMA journal_mode = WAL;
@@ -137,11 +137,19 @@ async function migrate(database: SQLite.SQLiteDatabase) {
   );
 }
 
-export async function getDb(): Promise<SQLite.SQLiteDatabase> {
+// ponytail: memoize the promise, not the handle — concurrent callers were each
+// opening a second connection and deadlocking WAL writes mid-boot
+export function getDb(): Promise<SQLite.SQLiteDatabase> {
   if (!db) {
-    db = await SQLite.openDatabaseAsync("fino.db");
-    await db.execAsync(SCHEMA);
-    await migrate(db);
+    db = (async () => {
+      const database = await SQLite.openDatabaseAsync("fino.db");
+      await database.execAsync(SCHEMA);
+      await migrate(database);
+      return database;
+    })().catch((e) => {
+      db = null;
+      throw e;
+    });
   }
   return db;
 }

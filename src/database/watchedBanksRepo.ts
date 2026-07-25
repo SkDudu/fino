@@ -59,7 +59,12 @@ export async function replaceWatchedBanks(
       );
     }
   });
-  await syncNative();
+  // ponytail: SQLite is source of truth; native filter retries on boot if this throws
+  try {
+    await syncNative();
+  } catch {
+    /* ignore */
+  }
 }
 
 export async function removeWatchedBank(packageName: string): Promise<void> {

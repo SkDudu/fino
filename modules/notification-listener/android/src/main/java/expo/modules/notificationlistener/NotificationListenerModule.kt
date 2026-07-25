@@ -4,7 +4,6 @@ import android.content.Intent
 import android.content.pm.PackageManager
 import android.os.Bundle
 import android.provider.Settings
-import androidx.core.os.bundleOf
 import expo.modules.kotlin.modules.Module
 import expo.modules.kotlin.modules.ModuleDefinition
 
@@ -53,20 +52,20 @@ class NotificationListenerModule : Module() {
     }
 
     Function("getInstalledApps") {
-      val context = appContext.reactContext ?: return@Function emptyList<Bundle>()
+      val context = appContext.reactContext ?: return@Function emptyList<Map<String, String>>()
       val pm = context.packageManager
       val intent = Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_LAUNCHER)
       pm.queryIntentActivities(intent, PackageManager.MATCH_ALL)
         .mapNotNull { resolve ->
           val pkg = resolve.activityInfo?.packageName ?: return@mapNotNull null
           if (pkg == context.packageName) return@mapNotNull null
-          bundleOf(
+          mapOf(
             "packageName" to pkg,
             "label" to resolve.loadLabel(pm).toString()
           )
         }
-        .distinctBy { it.getString("packageName") }
-        .sortedBy { it.getString("label")?.lowercase() }
+        .distinctBy { it["packageName"] }
+        .sortedBy { it["label"]?.lowercase() }
     }
 
     Function("setWatchedPackages") { packages: List<String> ->

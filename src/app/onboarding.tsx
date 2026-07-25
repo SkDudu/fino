@@ -3,6 +3,7 @@ import { useRouter } from "expo-router";
 import { useState } from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
+import { FinoMark } from "@/components/FinoMark";
 import { PrimaryButton } from "@/components/PrimaryButton";
 import { colors, radius, spacing, typography } from "@/constants/theme";
 import { setSetting } from "@/database/settingsRepo";
@@ -15,15 +16,21 @@ const HOW_STEPS = [
 
 export default function OnboardingScreen() {
   const [step, setStep] = useState(0);
+  const [saving, setSaving] = useState(false);
   const router = useRouter();
 
   async function finish() {
-    await setSetting("onboarding_done", "1");
-    router.replace("/" as never);
+    if (saving) return;
+    setSaving(true);
+    try {
+      await setSetting("onboarding_done", "1");
+    } finally {
+      router.replace("/(tabs)" as never);
+    }
   }
 
   function next() {
-    if (step >= 2) finish();
+    if (step >= 2) void finish();
     else setStep((s) => s + 1);
   }
 
@@ -42,9 +49,7 @@ export default function OnboardingScreen() {
       {step === 0 ? (
         <>
           <View style={styles.heroCenter}>
-            <View style={styles.mark}>
-              <Text style={styles.markF}>F</Text>
-            </View>
+            <FinoMark size={120} />
           </View>
           <View style={styles.copyCenter}>
             <Text style={styles.title}>Seu dinheiro, organizado sozinho</Text>
@@ -102,7 +107,11 @@ export default function OnboardingScreen() {
             <View key={i} style={[styles.dot, i === step && styles.dotActive]} />
           ))}
         </View>
-        <PrimaryButton label={step === 2 ? "Começar" : "Continuar"} onPress={next} />
+        <PrimaryButton
+          label={step === 2 ? "Começar" : "Continuar"}
+          onPress={next}
+          loading={saving}
+        />
       </View>
     </SafeAreaView>
   );
@@ -129,7 +138,6 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
   },
-  markF: { ...typography.display, color: colors.primary },
   copyCenter: {
     paddingHorizontal: spacing.xl,
     gap: spacing.md,

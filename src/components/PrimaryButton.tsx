@@ -1,16 +1,40 @@
-import { Pressable, StyleSheet, Text } from "react-native";
+import {
+  ActivityIndicator,
+  Pressable,
+  StyleSheet,
+  Text,
+  type StyleProp,
+  type ViewStyle,
+} from "react-native";
 import { colors, layout, radius, spacing, typography } from "@/constants/theme";
 
 type Props = {
   label: string;
   onPress: () => void;
-  style?: object;
+  style?: StyleProp<ViewStyle>;
+  loading?: boolean;
+  disabled?: boolean;
 };
 
-export function PrimaryButton({ label, onPress, style }: Props) {
+export function PrimaryButton({
+  label,
+  onPress,
+  style,
+  loading = false,
+  disabled = false,
+}: Props) {
+  const blocked = loading || disabled;
   return (
-    <Pressable style={[styles.btn, style]} onPress={onPress}>
-      <Text style={styles.text}>{label}</Text>
+    <Pressable
+      style={[styles.btn, blocked && styles.btnDisabled, style]}
+      onPress={onPress}
+      disabled={blocked}
+    >
+      {loading ? (
+        <ActivityIndicator color={colors.buttonPrimaryText} />
+      ) : (
+        <Text style={styles.text}>{label}</Text>
+      )}
     </Pressable>
   );
 }
@@ -25,6 +49,7 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     marginHorizontal: spacing.lg,
   },
+  btnDisabled: { opacity: 0.7 },
   text: {
     ...typography.body,
     fontFamily: typography.title.fontFamily,

@@ -8,28 +8,49 @@ import {
 import { Stack, useRouter } from "expo-router";
 import * as SplashScreen from "expo-splash-screen";
 import { StatusBar } from "expo-status-bar";
-import { useEffect, useState } from "react";
-import { AppState } from "react-native";
-import { colors } from "@/constants/theme";
+import { useEffect, useRef, useState } from "react";
+import { ActivityIndicator, AppState, StyleSheet, View } from "react-native";
+import { FinoMark } from "@/components/FinoMark";
+import { colors, spacing } from "@/constants/theme";
 import { initDb } from "@/database/db";
 import { syncWatchedToNative } from "@/database/watchedBanksRepo";
 import { getSetting } from "@/database/settingsRepo";
 
+// Keep native splash up until we call hide (must be module scope).
 SplashScreen.preventAutoHideAsync();
 
+/** ponytail: start DB while fonts load — splash covers max(fonts, db), not sum */
+let bootPromise: Promise<string | null> | null = null;
+function bootDb(): Promise<string | null> {
+  if (!bootPromise) {
+    bootPromise = initDb()
+      .then(() => syncWatchedToNative())
+      .then(() => {
+        void import("@/ai/usdBrlRate").then(({ ensureUsdBrlRate }) => {
+          void ensureUsdBrlRate();
+        });
+        return getSetting("onboarding_done");
+      });
+  }
+  return bootPromise;
+}
+
 export default function RootLayout() {
-  const [fontsLoaded] = useFonts({
+  const [fontsLoaded, fontError] = useFonts({
     Inter_400Regular,
     Inter_500Medium,
     Inter_600SemiBold,
     Inter_700Bold,
   });
-  const [ready, setReady] = useState(false);
+  const fontsOk = fontsLoaded || !!fontError;
+  const [gate, setGate] = useState<"loading" | "onboarding" | "app">("loading");
   const router = useRouter();
+  // ponytail: redirect once — re-running it remounts onboarding and resets step
+  const redirected = useRef(false);
 
   useEffect(() => {
-    if (fontsLoaded) SplashScreen.hideAsync();
-  }, [fontsLoaded]);
+    void bootDb();
+  }, []);
 
   useEffect(() => {
     const sub = AppState.addEventListener("change", (next) => {
@@ -42,32 +63,47 @@ export default function RootLayout() {
   }, []);
 
   useEffect(() => {
-    if (!fontsLoaded) return;
+    if (!fontsOk) return;
     let cancelled = false;
 
-    initDb()
-      .then(() => syncWatchedToNative())
-      .then(() => {
-        void import("@/ai/usdBrlRate").then(({ ensureUsdBrlRate }) => {
-          void ensureUsdBrlRate();
-        });
-        return getSetting("onboarding_done");
-      })
+    bootDb()
       .then((v) => {
-        if (cancelled) return;
-        setReady(true);
-        if (v !== "1") router.replace("/onboarding" as never);
+        if (!cancelled) setGate(v === "1" ? "app" : "onboarding");
       })
       .catch(() => {
-        if (!cancelled) setReady(true);
+        if (!cancelled) setGate("app");
       });
 
     return () => {
       cancelled = true;
     };
-  }, [fontsLoaded, router]);
+  }, [fontsOk]);
 
-  if (!fontsLoaded || !ready) return null;
+  // Hand off to our own boot screen once fonts can render it (no gray gap).
+  useEffect(() => {
+    if (!fontsOk) return;
+    const id = requestAnimationFrame(() => {
+      void SplashScreen.hideAsync();
+    });
+    return () => cancelAnimationFrame(id);
+  }, [fontsOk]);
+
+  // Runs after the Stack mounts, so replace() has a navigator to act on.
+  useEffect(() => {
+    if (gate !== "onboarding" || redirected.current) return;
+    redirected.current = true;
+    router.replace("/onboarding" as never);
+  }, [gate, router]);
+
+  if (gate === "loading") {
+    return (
+      <View style={styles.boot}>
+        <StatusBar style="light" />
+        <FinoMark size={120} />
+        <ActivityIndicator color={colors.primary} style={styles.bootSpinner} />
+      </View>
+    );
+  }
 
   return (
     <>
@@ -100,3 +136,13 @@ export default function RootLayout() {
     </>
   );
 }
+
+const styles = StyleSheet.create({
+  boot: {
+    flex: 1,
+    backgroundColor: colors.background,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  bootSpinner: { marginTop: spacing.xl },
+});

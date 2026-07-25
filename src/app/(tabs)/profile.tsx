@@ -16,6 +16,7 @@ import {
   hasApiKey,
   onlineModelShortLabel,
 } from "@/ai/aiSettings";
+import { FinoMark } from "@/components/FinoMark";
 import { ScreenHeader } from "@/components/ScreenHeader";
 import { SettingsRow } from "@/components/SettingsRow";
 import { colors, radius, spacing, typography } from "@/constants/theme";
@@ -106,9 +107,7 @@ export default function ProfileScreen() {
       <ScreenHeader eyebrow="CONTA" title="Perfil" />
 
       <View style={styles.userCard}>
-        <View style={styles.avatar}>
-          <Text style={styles.avatarText}>FI</Text>
-        </View>
+        <FinoMark size={52} />
         <View style={styles.userMeta}>
           <Text style={styles.name}>Fino</Text>
           <Text style={styles.sub}>
@@ -194,18 +193,6 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     gap: spacing.md,
-  },
-  avatar: {
-    width: 52,
-    height: 52,
-    borderRadius: radius.full,
-    backgroundColor: colors.primarySoft,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  avatarText: {
-    ...typography.title,
-    color: colors.primary,
   },
   userMeta: { flex: 1, gap: 2 },
   name: {
