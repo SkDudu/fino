@@ -1,4 +1,5 @@
 import * as SQLite from "expo-sqlite";
+import { ORPHAN_AI_SETTING_KEYS } from "./orphanAiSettings";
 
 let db: SQLite.SQLiteDatabase | null = null;
 
@@ -115,6 +116,8 @@ const TX_COLUMNS: [string, string][] = [
   ["ai_version", "TEXT"],
 ];
 
+/** Offline GGUF leftovers — safe to delete once. See orphanAiSettings.ts */
+
 async function migrate(database: SQLite.SQLiteDatabase) {
   const cols = await database.getAllAsync<{ name: string }>(
     `PRAGMA table_info(transactions)`
@@ -127,6 +130,11 @@ async function migrate(database: SQLite.SQLiteDatabase) {
       );
     }
   }
+  const placeholders = ORPHAN_AI_SETTING_KEYS.map(() => "?").join(",");
+  await database.runAsync(
+    `DELETE FROM settings WHERE key IN (${placeholders})`,
+    ...ORPHAN_AI_SETTING_KEYS
+  );
 }
 
 export async function getDb(): Promise<SQLite.SQLiteDatabase> {

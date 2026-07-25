@@ -1,5 +1,5 @@
-import { enrichFromText, getActiveModel, isAiReady } from "@/ai/AIService";
-import { getAiMode, getOnlineModel } from "@/ai/aiSettings";
+import { enrichFromText, isAiReady } from "@/ai/AIService";
+import { getOnlineModel } from "@/ai/aiSettings";
 import { insertAiLog } from "@/database/aiLogsRepo";
 import { insertAiUsage } from "@/database/aiUsageRepo";
 import { findAlias, upsertAlias } from "@/database/aliasesRepo";
@@ -9,7 +9,7 @@ import { aliasKey } from "./enrichmentHelpers";
 
 export { aliasKey, confidenceLevel, needsReview } from "./enrichmentHelpers";
 
-/** Enrich after parser. Alias → IA (online/local) → deterministic categorize. */
+/** Enrich after parser. Alias → DeepSeek → deterministic categorize. */
 export async function enrichTransaction(
   tx: Transaction,
   rawText: string
@@ -41,20 +41,17 @@ export async function enrichTransaction(
     };
   }
 
-  // ponytail: gate on isAiReady (online key | local GGUF), not isModelInstalled
   if (await isAiReady()) {
     const result = await enrichFromText(rawText);
     if (result) {
       const { json: ai, usage } = result;
-      const mode = await getAiMode();
-      const modelId =
-        mode === "online" ? await getOnlineModel() : (await getActiveModel()).id;
+      const modelId = await getOnlineModel();
       if (usage) void insertAiUsage(usage, "enrich").catch(() => {});
       await insertAiLog({
         notificationId: tx.notificationId,
         model: modelId,
         modelVersion: "1",
-        runtime: mode === "online" ? "deepseek" : "llama.cpp",
+        runtime: "deepseek",
         executionTime: Date.now() - t0,
         confidence: ai.confidence,
         tokens: usage?.totalTokens,

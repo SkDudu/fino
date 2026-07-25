@@ -11,9 +11,7 @@ import {
   View,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
-import { isModelInstalled } from "@/ai/AIService";
 import {
-  getAiMode,
   getOnlineModel,
   hasApiKey,
   onlineModelShortLabel,
@@ -43,18 +41,11 @@ export default function ProfileScreen() {
   useFocusEffect(
     useCallback(() => {
       void (async () => {
-        const mode = await getAiMode();
-        if (mode === "online") {
-          if (!(await hasApiKey())) {
-            setAiSubtitle("Online · sem API key");
-            return;
-          }
-          setAiSubtitle(`Online · ${onlineModelShortLabel(await getOnlineModel())}`);
+        if (!(await hasApiKey())) {
+          setAiSubtitle("Online · sem API key");
           return;
         }
-        setAiSubtitle(
-          (await isModelInstalled()) ? "Offline · modelo instalado" : "Offline · sem modelo"
-        );
+        setAiSubtitle(`Online · ${onlineModelShortLabel(await getOnlineModel())}`);
       })();
     }, [])
   );
@@ -149,7 +140,7 @@ export default function ProfileScreen() {
         icon="hardware-chip-outline"
         title="IA"
         subtitle={aiSubtitle}
-        onPress={() => router.push("/ai-local" as never)}
+        onPress={() => router.push("/ai-settings" as never)}
       />
       <SettingsRow
         icon="information-circle-outline"

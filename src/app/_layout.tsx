@@ -33,15 +33,9 @@ export default function RootLayout() {
 
   useEffect(() => {
     const sub = AppState.addEventListener("change", (next) => {
-      if (next === "active") {
-        void import("@/ai/usdBrlRate").then(({ ensureUsdBrlRate }) => {
-          void ensureUsdBrlRate();
-        });
-        return;
-      }
-      if (next !== "background") return;
-      void import("@/ai/AIService").then(({ getStatus, releaseModelIfNotKept }) => {
-        if (getStatus() !== "RUNNING") void releaseModelIfNotKept();
+      if (next !== "active") return;
+      void import("@/ai/usdBrlRate").then(({ ensureUsdBrlRate }) => {
+        void ensureUsdBrlRate();
       });
     });
     return () => sub.remove();
@@ -99,7 +93,7 @@ export default function RootLayout() {
         />
         <Stack.Screen name="choose-apps" />
         <Stack.Screen name="watched-banks" />
-        <Stack.Screen name="ai-local" />
+        <Stack.Screen name="ai-settings" />
         <Stack.Screen name="conversations" />
         <Stack.Screen name="transaction/[id]" />
       </Stack>

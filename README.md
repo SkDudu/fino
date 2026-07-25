@@ -11,7 +11,7 @@ O Fino escuta notificações de apps bancários no seu celular, interpreta o con
 1. Você concede acesso às notificações do Android.
 2. O app grava **toda** notificação dos bancos observados (sem criar lançamento sozinho).
 3. Em **Notificações**, você escolhe **Analisar** ou **Descartar**.
-4. Analisar: parser extrai dados; se a IA local estiver pronta, enriquece; senão usa regras determinísticas.
+4. Analisar: parser extrai dados; se a IA (DeepSeek) estiver pronta, enriquece; senão usa regras determinísticas.
 5. O lançamento entra no saldo e no histórico.
 
 Nada é enviado para a nuvem. O app funciona offline.

@@ -16,14 +16,12 @@ import { Ionicons } from "@expo/vector-icons";
 import { GripThinkingIcon } from "@/components/GripThinkingIcon";
 import {
   ask as askAi,
+  bootAi,
   getStatus,
-  initialize,
   isAiReady,
-  isReady,
   subscribeStatus,
 } from "@/ai/AIService";
 import {
-  getAiMode,
   getOnlineModel,
   type OnlineModelId,
 } from "@/ai/aiSettings";
@@ -34,8 +32,6 @@ import {
 } from "@/ai/deepseekPricing";
 import { clearConversation } from "@/ai/conversation/ConversationStore";
 import type { AiStatus } from "@/ai/constants";
-import { DEFAULT_MODEL_ID } from "@/ai/constants";
-import { getCatalogModel } from "@/ai/modelCatalog";
 import { PrimaryButton } from "@/components/PrimaryButton";
 import { ScreenHeader } from "@/components/ScreenHeader";
 import { colors, radius, spacing, typography } from "@/constants/theme";
@@ -50,8 +46,6 @@ import {
   type UsageByModel,
 } from "@/database/aiUsageRepo";
 
-const WELCOME_READY =
-  "Modelo carregado. Pergunte sobre seus gastos ou escolha uma sugestão abaixo.";
 const WELCOME_ONLINE =
   "DeepSeek online. Pergunte sobre seus gastos ou escolha uma sugestão abaixo.";
 
@@ -64,29 +58,17 @@ const SUGGESTIONS = [
 const WELCOME_MSG: ChatMsg = {
   id: "welcome",
   role: "ai",
-  text: WELCOME_READY,
+  text: WELCOME_ONLINE,
 };
-
-const defaultSize = getCatalogModel(DEFAULT_MODEL_ID).size;
-const SIZE_HINT =
-  defaultSize > 0
-    ? `~${Math.round(defaultSize / (1024 * 1024))} MB`
-    : "~650 MB";
 
 const MONTH_LABEL = new Date()
   .toLocaleDateString("pt-BR", { month: "long" })
   .toUpperCase();
 
-function chipLabel(
-  status: AiStatus,
-  online: boolean,
-  onlineModel: OnlineModelId | null
-): string {
-  if (online) return `Online · ${onlineModel ? modelShort(onlineModel) : "DeepSeek"}`;
-  if (status === "READY" || status === "RUNNING") return "Modelo pronto · offline";
-  if (status === "LOADING") return "Carregando na memória…";
-  if (status === "ERROR") return "Erro no modelo";
-  return "Instalado";
+function chipLabel(status: AiStatus, onlineModel: OnlineModelId | null): string {
+  if (status === "ERROR") return "Erro na API";
+  if (status === "RUNNING") return "Processando…";
+  return `Online · ${onlineModel ? modelShort(onlineModel) : "DeepSeek"}`;
 }
 
 function sessionUsage(msgs: ChatMsg[]): { tokens: number; costUsd: number; model?: OnlineModelId } {
@@ -114,7 +96,7 @@ function monthStripLabel(byModel: UsageByModel[], totalUsd: number): string {
 
 function chipColor(status: AiStatus): string {
   if (status === "ERROR") return colors.error;
-  if (status === "LOADING") return colors.secondary;
+  if (status === "RUNNING") return colors.secondary;
   return colors.success;
 }
 
@@ -146,8 +128,7 @@ function HeaderBtn({
 export default function AiScreen() {
   const router = useRouter();
   const params = useLocalSearchParams<{ id?: string; new?: string }>();
-  const [installed, setInstalled] = useState<boolean | null>(null);
-  const [onlineMode, setOnlineMode] = useState(false);
+  const [ready, setReady] = useState<boolean | null>(null);
   const [onlineModel, setOnlineModel] = useState<OnlineModelId | null>(null);
   const [runtimeStatus, setRuntimeStatus] = useState<AiStatus>(getStatus());
   const [threadId, setThreadId] = useState<string | null>(null);
@@ -185,21 +166,17 @@ export default function AiScreen() {
   useFocusEffect(
     useCallback(() => {
       void (async () => {
-        const mode = await getAiMode();
-        setOnlineMode(mode === "online");
-        if (mode === "online") setOnlineModel(await getOnlineModel());
-        else setOnlineModel(null);
-        const ready = await isAiReady();
-        setInstalled(ready);
-        if (mode === "online" && ready) {
+        await bootAi();
+        setOnlineModel(await getOnlineModel());
+        const ok = await isAiReady();
+        setReady(ok);
+        if (ok) {
           setRuntimeStatus("READY");
           setMsgs((prev) =>
             prev.length === 1 && prev[0].id === "welcome"
               ? [{ ...WELCOME_MSG, text: WELCOME_ONLINE }]
               : prev
           );
-        } else if (await isReady()) {
-          setRuntimeStatus("READY");
         } else {
           setRuntimeStatus(getStatus());
         }
@@ -261,25 +238,8 @@ export default function AiScreen() {
     const q = text.trim();
     if (!q || thinking) return;
     if (!(await isAiReady())) {
-      Alert.alert(
-        "IA indisponível",
-        (await getAiMode()) === "online"
-          ? "Configure a API key em Perfil → IA."
-          : "Baixe um modelo local em Perfil → IA."
-      );
+      Alert.alert("IA indisponível", "Configure a API key em Perfil → IA.");
       return;
-    }
-    if ((await getAiMode()) === "local" && !(await isReady())) {
-      try {
-        await initialize();
-      } catch {
-        Alert.alert("Erro", "Não foi possível carregar o modelo.");
-        return;
-      }
-      if (!(await isReady())) {
-        Alert.alert("Aguarde", "O modelo ainda está carregando.");
-        return;
-      }
     }
     setShowSuggestions(false);
     setInput("");
@@ -364,33 +324,35 @@ export default function AiScreen() {
     </View>
   );
 
-  if (installed !== true) {
+  if (ready !== true) {
     return (
       <SafeAreaView style={styles.container} edges={["top"]}>
         <ScreenHeader eyebrow="ASSISTENTE" title="IA" trailing={headerActions} />
         <View style={styles.emptyWrap}>
           <View style={styles.emptyIcon}>
-            <Ionicons name="hardware-chip-outline" size={40} color={colors.primary} />
+            <Ionicons name="key-outline" size={40} color={colors.primary} />
           </View>
           <View style={styles.emptyCopy}>
-            <Text style={styles.emptyTitle}>Modelo não baixado</Text>
+            <Text style={styles.emptyTitle}>API key necessária</Text>
             <Text style={styles.emptyBody}>
-              Baixe o modelo local para conversar com seus dados financeiros — tudo
-              offline, no aparelho.
+              Configure sua chave DeepSeek para conversar com seus dados
+              financeiros.
             </Text>
           </View>
           <View style={styles.emptyCtaBlock}>
             <PrimaryButton
-              label="Baixar modelo"
-              onPress={() => router.push("/ai-local" as never)}
+              label="Configurar IA"
+              onPress={() => router.push("/ai-settings" as never)}
               style={styles.emptyCta}
             />
-            <Text style={styles.emptyHint}>{SIZE_HINT} · Offline · Sem conta</Text>
+            <Text style={styles.emptyHint}>Online · DeepSeek</Text>
           </View>
         </View>
         <View style={styles.composerDisabled}>
           <View style={styles.inputDisabled}>
-            <Text style={styles.inputDisabledText}>Baixe o modelo para conversar…</Text>
+            <Text style={styles.inputDisabledText}>
+              Configure a API key para conversar…
+            </Text>
           </View>
           <View style={styles.sendDisabledBox}>
             <Ionicons name="send" size={18} color={colors.textTertiary} />
@@ -419,10 +381,10 @@ export default function AiScreen() {
         <View style={[styles.readyChip, { backgroundColor: `${chipTint}1F` }]}>
           <View style={[styles.readyDot, { backgroundColor: chipTint }]} />
           <Text style={[styles.readyText, { color: chipTint }]}>
-            {chipLabel(runtimeStatus, onlineMode, onlineModel)}
+            {chipLabel(runtimeStatus, onlineModel)}
           </Text>
         </View>
-        {onlineMode && session.tokens > 0 ? (
+        {session.tokens > 0 ? (
           <View style={styles.sessionUso}>
             <Text style={styles.sessionMuted}>Sessão</Text>
             <Text style={styles.sessionStrong}>
@@ -493,20 +455,18 @@ export default function AiScreen() {
             </View>
           ) : null}
         </ScrollView>
-        {onlineMode ? (
-          <Pressable
-            style={styles.usoMes}
-            onPress={() => router.push("/ai-local" as never)}
-          >
-            <View style={styles.usoMesLeft}>
-              <Text style={styles.usoMesLabel}>USO · {MONTH_LABEL}</Text>
-              <Text style={styles.usoMesValue}>
-                {monthStripLabel(monthByModel, monthTotalUsd)}
-              </Text>
-            </View>
-            <Text style={styles.usoMesLink}>Detalhes</Text>
-          </Pressable>
-        ) : null}
+        <Pressable
+          style={styles.usoMes}
+          onPress={() => router.push("/ai-settings" as never)}
+        >
+          <View style={styles.usoMesLeft}>
+            <Text style={styles.usoMesLabel}>USO · {MONTH_LABEL}</Text>
+            <Text style={styles.usoMesValue}>
+              {monthStripLabel(monthByModel, monthTotalUsd)}
+            </Text>
+          </View>
+          <Text style={styles.usoMesLink}>Detalhes</Text>
+        </Pressable>
         <View style={styles.composer}>
           <TextInput
             style={styles.input}

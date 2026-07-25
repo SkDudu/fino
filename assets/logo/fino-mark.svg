@@ -1,0 +1,5 @@
+<!-- Traço engrossa ao reduzir: 6 em display, 10 no ícone, 13 abaixo de 32px. -->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="21 8 62 77" fill="none">
+  <path d="M45 80 L45 30 C45 20 54 12 68 15" stroke="currentColor" stroke-width="6" stroke-linecap="round"/>
+  <path d="M26 40 L78 40" stroke="currentColor" stroke-width="6" stroke-linecap="round"/>
+</svg>
